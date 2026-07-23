@@ -360,6 +360,40 @@ The included launcher manages isolated 0.6B and 1.7B MLX instances:
 
 ## Docker
 
+### Pre-built images (GHCR)
+
+Images are published to GitHub Container Registry on every push to `main`:
+
+| Variant | Image |
+|---|---|
+| NVIDIA CUDA | `ghcr.io/charnesp/qwen3-tts-openai-fastapi:latest` |
+| CPU | `ghcr.io/charnesp/qwen3-tts-openai-fastapi-cpu:latest` |
+| vLLM | `ghcr.io/charnesp/qwen3-tts-openai-fastapi-vllm:latest` |
+
+Also tagged as `sha-<short>` for pin-to-commit pulls.
+
+```bash
+# CUDA (GPU)
+docker pull ghcr.io/charnesp/qwen3-tts-openai-fastapi:latest
+docker run --gpus all -p 8880:8880 \
+  -v ~/.cache/huggingface:/home/appuser/.cache/huggingface \
+  ghcr.io/charnesp/qwen3-tts-openai-fastapi:latest
+
+# CPU
+docker pull ghcr.io/charnesp/qwen3-tts-openai-fastapi-cpu:latest
+docker run -p 8880:8880 \
+  -v ~/.cache/huggingface:/home/appuser/.cache/huggingface \
+  ghcr.io/charnesp/qwen3-tts-openai-fastapi-cpu:latest
+
+# vLLM
+docker pull ghcr.io/charnesp/qwen3-tts-openai-fastapi-vllm:latest
+docker run --gpus all --ipc=host -p 8880:8880 \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  ghcr.io/charnesp/qwen3-tts-openai-fastapi-vllm:latest
+```
+
+If pulls fail with unauthorized, set the package visibility to Public under the repo's GitHub Packages settings (one-time).
+
 ### NVIDIA GPU
 
 ```bash
