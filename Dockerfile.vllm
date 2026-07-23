@@ -31,9 +31,13 @@ RUN pip install --no-cache-dir -U pip && \
     pydub \
     librosa
 
-# Install ninja and flash-attention 2 for optimized inference
-RUN pip install --no-cache-dir ninja packaging wheel && \
-    pip install --no-cache-dir flash-attn --no-build-isolation
+# flash-attn is optional. Never compile from source here: on GitHub Actions
+# runners, pip falls back to a sdist (no wheel for torch 2.9 + cu129 + cp312)
+# and the compile is killed mid-build. Prefer an already-installed module or a
+# prebuilt wheel only.
+RUN python -c "import flash_attn" 2>/dev/null \
+    || pip install --no-cache-dir --only-binary=:all: flash-attn \
+    || echo "WARNING: flash-attn not available as a wheel; continuing without it"
 
 # Copy application code
 COPY . /app
