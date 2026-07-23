@@ -1,0 +1,136 @@
+# Deploy pre-built GHCR image with nginx (Basic Auth or Bearer API key).
+#
+# Required env:
+#   HF_TOKEN              Hugging Face token (gated model downloads)
+#   TTS_API_KEY           Bearer token accepted by nginx
+#   TTS_BASIC_AUTH_USER   Basic-auth username
+#   TTS_BASIC_AUTH_PASS   Basic-auth password
+#
+# Optional env:
+#   HF_CACHE_DIR          Host path for HF cache (default: ./data/hf)
+#   VOICE_LIBRARY_HOST_DIR Host path for voice profiles (default: ./data/voice_library)
+#   TTS_PROXY_PORT        Published nginx port (default: 8001)
+#
+# Usage:
+#   docker compose -f docker-compose.ghcr.yml up -d
+
+services:
+  qwen3-tts:
+    image: ghcr.io/charnesp/qwen3-tts-openai-fastapi:latest
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HOST=0.0.0.0
+      - PORT=8880
+      - TTS_BACKEND=official
+      - TTS_MODEL_NAME=Qwen/Qwen3-TTS-12Hz-1.7B-Base
+      - TTS_IDLE_TIMEOUT_SECONDS=240
+      - TTS_WARMUP_ON_START=true
+      - TTS_LAZY_LOAD=true
+      - TTS_ATTN=sdpa
+      - VOICE_LIBRARY_DIR=/app/voice_library
+      - ENABLE_VOICE_STUDIO=true
+    volumes:
+      - ${HF_CACHE_DIR:-./data/hf}:/home/appuser/.cache/huggingface
+      - ${VOICE_LIBRARY_HOST_DIR:-./data/voice_library}:/app/voice_library
+    networks:
+      - tts-internal
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8880/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${TTS_PROXY_PORT:-8001}:8001"
+    environment:
+      - TTS_API_KEY=${TTS_API_KEY}
+      - TTS_BASIC_AUTH_USER=${TTS_BASIC_AUTH_USER}
+      - TTS_BASIC_AUTH_PASS=${TTS_BASIC_AUTH_PASS}
+    command:
+      - sh
+      - -c
+      - |
+        printf '%s\n' \
+          'events { multi_accept on; worker_connections 1024; }' \
+          'http {' \
+          '  map_hash_bucket_size 128;' \
+          '  limit_req_zone $$binary_remote_addr zone=general:10m rate=10r/s;' \
+          '  limit_req_zone $$binary_remote_addr zone=api:10m rate=1r/s;' \
+          '  limit_conn_zone $$binary_remote_addr zone=addr:10m;' \
+          '  map $$http_authorization $$api_key_valid {' \
+          '    default 0;' \
+          '    "Bearer __API_KEY__" 1;' \
+          '  }' \
+          '  map $$http_upgrade $$connection_upgrade {' \
+          '    default upgrade;' \
+          '    "" close;' \
+          '  }' \
+          '  server {' \
+          '    listen 8001;' \
+          '    proxy_http_version 1.1;' \
+          '    proxy_set_header Host $$host;' \
+          '    proxy_set_header X-Forwarded-Host $$host;' \
+          '    proxy_set_header X-Forwarded-Proto https;' \
+          '    proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;' \
+          '    proxy_set_header X-Real-IP $$remote_addr;' \
+          '    proxy_set_header Upgrade $$http_upgrade;' \
+          '    proxy_set_header Connection $$connection_upgrade;' \
+          '    proxy_buffering off;' \
+          '    proxy_cache off;' \
+          '    proxy_read_timeout 300s;' \
+          '    proxy_send_timeout 300s;' \
+          '    client_max_body_size 50M;' \
+          '    limit_conn addr 24;' \
+          '    location = /_bearer_check {' \
+          '      internal;' \
+          '      if ($$api_key_valid = 0) { return 401; }' \
+          '      return 200;' \
+          '    }' \
+          '    location /v1/ {' \
+          '      limit_req zone=api burst=3 nodelay;' \
+          '      satisfy any;' \
+          '      auth_basic "Qwen3 TTS";' \
+          '      auth_basic_user_file /etc/nginx/.htpasswd;' \
+          '      auth_request /_bearer_check;' \
+          '      proxy_pass http://qwen3-tts:8880;' \
+          '    }' \
+          '    location / {' \
+          '      limit_req zone=general burst=20 nodelay;' \
+          '      satisfy any;' \
+          '      auth_basic "Qwen3 TTS";' \
+          '      auth_basic_user_file /etc/nginx/.htpasswd;' \
+          '      auth_request /_bearer_check;' \
+          '      proxy_pass http://qwen3-tts:8880;' \
+          '    }' \
+          '  }' \
+          '}' > /etc/nginx/nginx.conf
+        sed "s|__API_KEY__|${TTS_API_KEY}|g" -i /etc/nginx/nginx.conf
+        apk add --no-cache apache2-utils
+        htpasswd -bc /etc/nginx/.htpasswd "${TTS_BASIC_AUTH_USER}" "${TTS_BASIC_AUTH_PASS}"
+        nginx -t && exec nginx -g 'daemon off;'
+    depends_on:
+      - qwen3-tts
+    networks:
+      - tts-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /etc/nginx/nginx.conf && nginx -t > /dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  tts-internal:
+    driver: bridge
