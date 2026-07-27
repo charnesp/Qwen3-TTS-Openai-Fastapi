@@ -1,13 +1,13 @@
 # Qwen3-TTS OpenAI-Compatible API Server
 # Multi-stage Dockerfile optimized for GPU/CUDA and CPU deployments
 #
-# GPU stack targets PyTorch 2.13 + CUDA 13.0 (cu130).
+# GPU stack targets PyTorch 2.13 + CUDA 13.0 (cu130) on Ubuntu 24.04 / Python 3.12.
 # Requires host NVIDIA driver >= 580 (CUDA 13.x); tested with driver 610 / UMD 13.3.
 
 # =============================================================================
 # Stage 1: Base image with system dependencies
 # =============================================================================
-ARG BASE_IMAGE=nvidia/cuda:13.0.3-cudnn-runtime-ubuntu22.04
+ARG BASE_IMAGE=nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04
 FROM ${BASE_IMAGE} AS base
 
 # Prevent interactive prompts during package installation
@@ -21,11 +21,11 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 
-# Install system dependencies
+# Ubuntu 24.04 ships Python 3.12 in main (CUDA 13 jammy images often lack python3.11).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
+    python3 \
+    python3-venv \
+    python3-dev \
     python3-pip \
     build-essential \
     git \
@@ -35,7 +35,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsox-dev \
     sox \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Set up Python virtual environment
@@ -48,19 +47,18 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # =============================================================================
 # Stage 2: Builder with CUDA development tools for flash-attn
 # =============================================================================
-FROM nvidia/cuda:13.0.3-cudnn-devel-ubuntu22.04 AS builder
+FROM nvidia/cuda:13.0.3-cudnn-devel-ubuntu24.04 AS builder
 
 # Install Python and build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
+    python3 \
+    python3-venv \
+    python3-dev \
     build-essential \
     git \
     curl \
     ninja-build \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Set up Python virtual environment
