@@ -1,10 +1,13 @@
 # Qwen3-TTS OpenAI-Compatible API Server
 # Multi-stage Dockerfile optimized for GPU/CUDA and CPU deployments
+#
+# GPU stack targets PyTorch 2.13 + CUDA 13.0 (cu130).
+# Requires host NVIDIA driver >= 580 (CUDA 13.x); tested with driver 610 / UMD 13.3.
 
 # =============================================================================
 # Stage 1: Base image with system dependencies
 # =============================================================================
-ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+ARG BASE_IMAGE=nvidia/cuda:13.0.3-cudnn-runtime-ubuntu22.04
 FROM ${BASE_IMAGE} AS base
 
 # Prevent interactive prompts during package installation
@@ -45,7 +48,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # =============================================================================
 # Stage 2: Builder with CUDA development tools for flash-attn
 # =============================================================================
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS builder
+FROM nvidia/cuda:13.0.3-cudnn-devel-ubuntu22.04 AS builder
 
 # Install Python and build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -71,11 +74,11 @@ WORKDIR /build
 COPY pyproject.toml ./
 COPY README.md ./
 
-# Install Python dependencies
+# PyTorch 2.13 CUDA 13.0 wheels. torchaudio is versioned independently (2.11.x).
 RUN pip install --no-cache-dir \
-    torch>=2.0.0 \
-    torchaudio>=2.0.0 \
-    --index-url https://download.pytorch.org/whl/cu121
+    torch==2.13.0 \
+    torchaudio==2.11.0 \
+    --index-url https://download.pytorch.org/whl/cu130
 
 # Install the main package dependencies
 RUN pip install --no-cache-dir \
@@ -157,9 +160,9 @@ COPY README.md ./
 
 # Install base dependencies first
 RUN pip install --no-cache-dir \
-    torch>=2.0.0 \
-    torchaudio>=2.0.0 \
-    --index-url https://download.pytorch.org/whl/cu121
+    torch==2.13.0 \
+    torchaudio==2.11.0 \
+    --index-url https://download.pytorch.org/whl/cu130
 
 # Install vLLM (this may take a while)
 RUN pip install --no-cache-dir vllm>=0.4.0
@@ -256,8 +259,8 @@ COPY pyproject.toml README.md ./
 # Install PyTorch (CPU version)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir \
-    torch>=2.0.0 \
-    torchaudio>=2.0.0 \
+    torch==2.13.0 \
+    torchaudio==2.11.0 \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Install Python dependencies
