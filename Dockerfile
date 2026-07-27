@@ -102,8 +102,15 @@ RUN pip install --no-cache-dir \
 # Install ninja for faster flash-attn compilation
 RUN pip install --no-cache-dir ninja packaging wheel
 
-# Install flash-attention 2 for optimized attention (requires CUDA)
-RUN pip install --no-cache-dir flash-attn --no-build-isolation
+# flash-attn source builds spawn many nvcc/cicc workers (~2–3 GiB each) and will OOM
+# even on 128 GiB hosts if unbounded. Cap parallelism and CUDA arch list.
+# Override e.g. --build-arg FLASH_ATTN_MAX_JOBS=2 --build-arg TORCH_CUDA_ARCH_LIST=8.9
+ARG FLASH_ATTN_MAX_JOBS=1
+ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
+RUN MAX_JOBS=${FLASH_ATTN_MAX_JOBS} \
+    NVCC_THREADS=1 \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST} \
+    pip install --no-cache-dir flash-attn --no-build-isolation
 
 # =============================================================================
 # Stage 3: Production image (official backend)
@@ -187,7 +194,12 @@ RUN pip install --no-cache-dir \
     aiofiles
 
 # Optional: Install flash-attention for better performance
-RUN pip install --no-cache-dir flash-attn --no-build-isolation || true
+ARG FLASH_ATTN_MAX_JOBS=1
+ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
+RUN MAX_JOBS=${FLASH_ATTN_MAX_JOBS} \
+    NVCC_THREADS=1 \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST} \
+    pip install --no-cache-dir flash-attn --no-build-isolation || true
 
 # =============================================================================
 # Stage 5: vLLM-Omni production image
