@@ -65,8 +65,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Keep MAX_JOBS=1 on GHA: ubuntu-latest has ~7–16 GiB RAM and
+          # flash-attn peeks at ~3–5 GiB per nvcc job. MAX_JOBS=4 OOMs the
+          # runner (shutdown signal). Local/Dockerfile default stays at 4.
           build-args: |
-            FLASH_ATTN_MAX_JOBS=4
+            FLASH_ATTN_MAX_JOBS=1
             TORCH_CUDA_ARCH_LIST=8.0;8.6;8.9;9.0
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
