@@ -124,6 +124,20 @@ Recommended: true for production to initialize torch.compile() and cuDNN.
 """
 
 # ============================================================================
+# API Input Limits
+# ============================================================================
+
+try:
+    TTS_MAX_INPUT_CHARS = max(1, int(os.getenv("TTS_MAX_INPUT_CHARS", "4096")))
+except ValueError:
+    TTS_MAX_INPUT_CHARS = 4096
+"""
+Maximum characters accepted in speech/clone request text fields.
+Default 4096 matches the OpenAI TTS API contract; raise if auto-chunking
+handles longer inputs and clients need more headroom.
+"""
+
+# ============================================================================
 # Intel Extension for PyTorch (IPEX) - Optional
 # ============================================================================
 

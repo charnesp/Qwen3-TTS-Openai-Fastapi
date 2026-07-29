@@ -7,6 +7,8 @@ Pydantic schemas for OpenAI-compatible TTS API.
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
+from api.config import TTS_MAX_INPUT_CHARS
+
 
 class NormalizationOptions(BaseModel):
     """Options for the text normalization system."""
@@ -50,8 +52,11 @@ class OpenAISpeechRequest(BaseModel):
     )
     input: str = Field(
         ...,
-        description="The text to generate audio for. Maximum length is 4096 characters.",
-        max_length=4096,
+        description=(
+            f"The text to generate audio for. Maximum length is "
+            f"{TTS_MAX_INPUT_CHARS} characters."
+        ),
+        max_length=TTS_MAX_INPUT_CHARS,
     )
     voice: str = Field(
         default="Vivian",
@@ -109,7 +114,7 @@ class VoiceCloneRequest(BaseModel):
     input: str = Field(
         ...,
         description="The text to generate audio for using the cloned voice.",
-        max_length=4096,
+        max_length=TTS_MAX_INPUT_CHARS,
     )
     ref_audio: str = Field(
         ...,
@@ -118,7 +123,7 @@ class VoiceCloneRequest(BaseModel):
     ref_text: Optional[str] = Field(
         default=None,
         description="Transcript of the reference audio. Required for ICL mode, optional for x-vector mode.",
-        max_length=4096,
+        max_length=TTS_MAX_INPUT_CHARS,
     )
     x_vector_only_mode: bool = Field(
         default=False,
