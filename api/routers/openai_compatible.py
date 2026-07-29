@@ -666,20 +666,61 @@ async def create_speech(
                 )
             else:
                 # Non-streaming path — honor the requested format (including wav)
+                # Apply auto-chunking to voice clone path to prevent quality
+                # degradation on long texts (model hallucinations, repetitions).
                 gen_start = time.time()
-                clone_kwargs = {
-                    "text": normalized_text,
-                    "ref_audio": ref_audio_np,
-                    "ref_audio_sr": ref_sr,
-                    "ref_text": profile["ref_text"] or None,
-                    "language": clone_lang,
-                    "x_vector_only_mode": profile["x_vector_only_mode"],
-                    "speed": request.speed,
-                }
-                if _method_accepts_kwarg(backend.generate_voice_clone, "cache_key"):
-                    clone_kwargs["cache_key"] = canonical_key
-                async with _generation_semaphore:
-                    audio, sample_rate = await backend.generate_voice_clone(**clone_kwargs)
+                clone_chunks = (
+                    _split_into_chunks(normalized_text, _MIN_CHUNK_CHARS, _MAX_CHUNK_CHARS)
+                    if _AUTOCHUNK else [normalized_text]
+                )
+                if len(clone_chunks) <= 1:
+                    clone_kwargs = {
+                        "text": normalized_text,
+                        "ref_audio": ref_audio_np,
+                        "ref_audio_sr": ref_sr,
+                        "ref_text": profile["ref_text"] or None,
+                        "language": clone_lang,
+                        "x_vector_only_mode": profile["x_vector_only_mode"],
+                        "speed": request.speed,
+                    }
+                    if _method_accepts_kwarg(backend.generate_voice_clone, "cache_key"):
+                        clone_kwargs["cache_key"] = canonical_key
+                    async with _generation_semaphore:
+                        audio, sample_rate = await backend.generate_voice_clone(**clone_kwargs)
+                else:
+                    logger.info(
+                        "Voice clone auto-chunking %d chars into %d chunks (window=%d-%d)",
+                        len(normalized_text), len(clone_chunks),
+                        _MIN_CHUNK_CHARS, _MAX_CHUNK_CHARS,
+                    )
+                    audios: List[np.ndarray] = []
+                    sample_rate = DEFAULT_SAMPLE_RATE
+                    async with _generation_semaphore:
+                        for seg in clone_chunks:
+                            seg_kwargs = {
+                                "text": seg,
+                                "ref_audio": ref_audio_np,
+                                "ref_audio_sr": ref_sr,
+                                "ref_text": profile["ref_text"] or None,
+                                "language": clone_lang,
+                                "x_vector_only_mode": profile["x_vector_only_mode"],
+                                "speed": request.speed,
+                            }
+                            if _method_accepts_kwarg(backend.generate_voice_clone, "cache_key"):
+                                seg_kwargs["cache_key"] = canonical_key
+                            a, sample_rate = await backend.generate_voice_clone(**seg_kwargs)
+                            if a is not None and len(a):
+                                audios.append(np.asarray(a))
+                    if not audios:
+                        raise RuntimeError("no audio produced from any voice clone chunk")
+                    gap_len = int(sample_rate * _CHUNK_GAP_MS / 1000.0)
+                    gap = np.zeros(gap_len, dtype=audios[0].dtype) if gap_len > 0 else None
+                    merged: List[np.ndarray] = []
+                    for i, a in enumerate(audios):
+                        if i and gap is not None:
+                            merged.append(gap)
+                        merged.append(a)
+                    audio = np.concatenate(merged)
                 gen_time = time.time() - gen_start
                 audio_dur = len(audio) / sample_rate if sample_rate > 0 else 0
                 rtf = gen_time / audio_dur if audio_dur > 0 else 0
