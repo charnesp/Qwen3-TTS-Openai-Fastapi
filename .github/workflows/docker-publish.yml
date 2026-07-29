@@ -66,7 +66,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            FLASH_ATTN_MAX_JOBS=1
+            FLASH_ATTN_MAX_JOBS=4
             TORCH_CUDA_ARCH_LIST=8.0;8.6;8.9;9.0
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
