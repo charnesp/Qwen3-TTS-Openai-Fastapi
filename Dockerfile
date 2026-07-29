@@ -102,10 +102,11 @@ RUN pip install --no-cache-dir \
 # Install ninja for faster flash-attn compilation
 RUN pip install --no-cache-dir ninja packaging wheel
 
-# flash-attn source builds spawn many nvcc/cicc workers (~2–3 GiB each) and will OOM
-# even on 128 GiB hosts if unbounded. Cap parallelism and CUDA arch list.
-# Override e.g. --build-arg FLASH_ATTN_MAX_JOBS=2 --build-arg TORCH_CUDA_ARCH_LIST=8.9
-ARG FLASH_ATTN_MAX_JOBS=1
+# flash-attn source builds spawn many nvcc/cicc workers (~3–5 GiB each) and will OOM
+# if unbounded. Default MAX_JOBS=4 matches upstream guidance for <96 GiB RAM hosts;
+# keep NVCC_THREADS=1 and a capped CUDA arch list. Override e.g.
+# --build-arg FLASH_ATTN_MAX_JOBS=1 --build-arg TORCH_CUDA_ARCH_LIST=8.9
+ARG FLASH_ATTN_MAX_JOBS=4
 ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
 RUN MAX_JOBS=${FLASH_ATTN_MAX_JOBS} \
     NVCC_THREADS=1 \
@@ -194,7 +195,7 @@ RUN pip install --no-cache-dir \
     aiofiles
 
 # Optional: Install flash-attention for better performance
-ARG FLASH_ATTN_MAX_JOBS=1
+ARG FLASH_ATTN_MAX_JOBS=4
 ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
 RUN MAX_JOBS=${FLASH_ATTN_MAX_JOBS} \
     NVCC_THREADS=1 \
